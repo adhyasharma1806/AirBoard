@@ -17,6 +17,12 @@ detector = HandDetector(detectionCon=0.9, maxHands=1)
 keyboard_controller = Controller()
 
 # -----------------------------
+# Always-On-Top Window
+# -----------------------------
+cv2.namedWindow("AirBoard", cv2.WINDOW_NORMAL)
+cv2.setWindowProperty("AirBoard", cv2.WND_PROP_TOPMOST, 1)
+
+# -----------------------------
 # Keyboard layout
 # -----------------------------
 keys = [
@@ -39,7 +45,7 @@ class Button:
         self.text = text
         self.is_pressed = False
         self.press_color = (255, 0, 255)
-        self.last_pressed = 0  # for cooldown
+        self.last_pressed = 0
 
 # -----------------------------
 # Draw all buttons
@@ -74,36 +80,23 @@ for i, row in enumerate(keys):
         y = y_spacing * i + 200
         button_list.append(Button([x, y], key, key_size))
 
-# -----------------------------
-# Spacebar: middle-bottom, wide
-# -----------------------------
+# Spacebar
 space_x = 200
-space_y = y_spacing * 3 + 180  # ↓ lowered slightly from +140 to +180
-space_width = 600
-space_height = 100
-button_list.append(Button([space_x, space_y], "Space", [space_width, space_height]))
+space_y = y_spacing * 3 + 180
+button_list.append(Button([space_x, space_y], "Space", [600, 100]))
 
-# -----------------------------
-# Backspace: move it near the spacebar
-# -----------------------------
-backspace_x = space_x + space_width + 50  # Position it to the right of the spacebar
-backspace_y = space_y  # Align it with the spacebar's vertical position
-backspace_width = 150
-backspace_height = 90
-button_list.append(Button([backspace_x, backspace_y],
-                          "Backspace", [backspace_width, backspace_height]))
+# Backspace
+backspace_x = space_x + 600 + 50
+backspace_y = space_y
+button_list.append(Button([backspace_x, backspace_y], "Backspace", [150, 90]))
 
-# -----------------------------
-# Index finger smoothing
-# -----------------------------
+# Finger smoothing
 index_history = []
 max_len = 5
-
-# Track pinch state to prevent double typing
 was_pinching = False
 
 # -----------------------------
-# Main loop
+# Main Loop
 # -----------------------------
 while True:
     success, frame = cap.read()
@@ -127,13 +120,11 @@ while True:
             index_tip = np.array(lm_list[8][:2])
             thumb_tip = np.array(lm_list[4][:2])
 
-            # Smooth index finger
             index_history.append(index_tip)
             if len(index_history) > max_len:
                 index_history.pop(0)
             smoothed_index = np.mean(index_history, axis=0)
 
-            # Hover + pinch detection for typing
             for btn in button_list:
                 x, y = btn.pos
                 w, h = btn.size
@@ -141,11 +132,9 @@ while True:
 
                 if x + padding < smoothed_index[0] < x + w - padding and \
                    y + padding < smoothed_index[1] < y + h - padding:
-                    # Hover effect
-                    cv2.rectangle(frame, (x - 3, y - 3),
-                                  (x + w + 3, y + h + 3), (0, 255, 255), 2)
 
-                    # Pinch detection
+                    cv2.rectangle(frame, (x - 3, y - 3), (x + w + 3, y + h + 3), (0, 255, 255), 2)
+
                     hand_width = np.linalg.norm(
                         np.array(lm_list[0][:2]) - np.array(lm_list[5][:2])
                     )
@@ -155,37 +144,33 @@ while True:
                     if pinching and not was_pinching:
                         if current_time - btn.last_pressed > 0.3:
                             btn.is_pressed = True
-                            btn.press_color = (
-                                random.randint(100, 255),
-                                random.randint(0, 150),
-                                random.randint(150, 255),
-                            )
                             btn.last_pressed = current_time
                             winsound.Beep(1200, 70)
 
                             if btn.text == "Space":
                                 final_text += " "
-                                keyboard_controller.type(" ")
+                                keyboard_controller.press(Key.space)
+                                keyboard_controller.release(Key.space)
+
                             elif btn.text == "Backspace":
                                 final_text = final_text[:-1]
                                 keyboard_controller.press(Key.backspace)
                                 keyboard_controller.release(Key.backspace)
+
                             else:
                                 final_text += btn.text
-                                keyboard_controller.type(btn.text)
+                                keyboard_controller.press(btn.text)
+                                keyboard_controller.release(btn.text)
 
                     was_pinching = pinching
     else:
-        was_pinching = False  # Reset if no hand detected
+        was_pinching = False
 
-    # -----------------------------
-    # Display typed text
-    # -----------------------------
     cv2.rectangle(frame, (50, 70), (1200, 150), (50, 0, 80), cv2.FILLED)
     cv2.putText(frame, final_text[-40:], (60, 130),
                 cv2.FONT_HERSHEY_PLAIN, 4, (255, 255, 255), 4)
 
-    cv2.imshow("🪩 Air Pointer Keyboard 🪩", frame)
+    cv2.imshow("AirBoard", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
